@@ -1,0 +1,122 @@
+name: CI-CD Docker to Azure Functions
+
+on:
+  push:
+    branches:
+      - main
+
+
+env:
+  IMAGE_NAME: my-azure-func
+  SELENIUM_IMAGE: selenium/standalone-chrome:latest
+  LOCATION: southindia 
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout repo
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 2️⃣ Login to Azure
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # 3️⃣ Set up Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # 4️⃣ Login to Azure Container Registry
+      - name: Docker Login to ACR
+        run: |
+          az acr login --name ${{secrets.ACR_NAME}}
+ 
+      # 5️⃣ Build Docker image
+      - name: Build Docker Image
+        run: |
+          docker build -f Dockerfile -t ${{ secrets.ACR_NAME }}.azurecr.io/my-function-app:${{ github.sha }} .
+
+       # 6️⃣ 🔍 Trivy vulnerability scan
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.ACR_NAME }}.azurecr.io/my-function-app:${{ github.sha }}
+          format: 'table'                  # Display vulnerabilities in readable table format
+          exit-code: '1'                   # Fail the job if vulnerabilities found (optional)
+          ignore-unfixed: true             # Skip unfixed CVEs to reduce noise
+          vuln-type: 'os,library'          # Scan both OS and app dependencies
+          severity: 'CRITICAL,HIGH'        # Only fail for high/critical vulnerabilities    
+
+      # 6️⃣ Push Docker image to ACR
+      - name: Push Docker Image
+        run: |
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/my-function-app:${{ github.sha }}
+
+      - name: Deploy Selenium ACI
+        run: |
+          az container create \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --name selenium-aci \
+            --image ${{ env.SELENIUM_IMAGE }} \
+            --cpu 2 --memory 4 \
+            --ports 4444 \
+            --dns-name-label selenium-${{ github.run_number }} \
+            --restart-policy Always \
+            --os-type Linux
+
+          SELENIUM_URL="http://selenium-${{ github.run_number }}.${{ env.LOCATION }}.azurecontainer.io:4444/wd/hub"
+          echo "SELENIUM_URL=$SELENIUM_URL" >> $GITHUB_ENV    
+
+      # # 7️⃣ Deploy Docker image to Azure Container Environment Apps
+      # - name: Deploy to Azure Function
+      #   run: |  
+      #     az functionapp config container set \
+      #       --name ${{ secrets.FUNCTION_APP_NAME }} \
+      #       --resource-group ${{ secrets.RESOURCE_GROUP }} \
+      #       --image ${{ secrets.ACR_NAME }}.azurecr.io/my-function-app:${{ github.sha }} \
+      #       --registry-server https://${{ secrets.ACR_NAME }}.azurecr.io \
+      #       --registry-username ${{ secrets.CLIENT_ID }} \
+      #       --registry-password ${{ secrets.CLIENT_SECRET }}
+
+      #     az functionapp config appsettings set \
+      #       --name ${{ secrets.FUNCTION_APP_NAME }} \
+      #       --resource-group ${{ secrets.RESOURCE_GROUP }} \
+      #       --settings SELENIUM_URL=${{ env.SELENIUM_URL }}      
+
+      # # 8️⃣ Restart Azure Function App
+      # - name: Restart Function App
+      #   run: |
+      #     az functionapp restart --name ${{ secrets.FUNCTION_APP_NAME }} --resource-group ${{ secrets.RESOURCE_GROUP }}
+
+      # # Enabling Identity 
+      # - name: Enabling Identity
+      #   run: |
+      #     az containerapp identity assign \
+      #       --name ${{ secrets.FUNCTION_APP_NAME }} \
+      #       --resource-group ${{ secrets.RESOURCE_GROUP }}
+
+      # # Assign ACR pull role 
+      # - name: Assign ACR pull role
+      #   run: |
+      #     az role assignment create \
+      #      --assignee ${{ secrets.CLIENT_ID }} \
+      #      --role AcrPull \
+      #     --scope /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RG>/providers/Microsoft.ContainerRegistry/registries/${{ secrets.ACR_NAME }}    
+
+      # Deploy Cotainer apps 
+      - name: Deploy to Container App
+        run: |
+          az containerapp create \
+            --name ${{ secrets.FUNCTION_APP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --environment managedEnvironment-seleniumRG-966c \
+            --image ${{ secrets.ACR_NAME }}.azurecr.io/my-function-app:${{ github.sha }} \
+            --ingress external \
+            --registry-server ${{ secrets.ACR_NAME }}.azurecr.io \
+            --registry-username ${{ secrets.CLIENT_ID }} \
+            --registry-password ${{ secrets.CLIENT_SECRET }}
+          
