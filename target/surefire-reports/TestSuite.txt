@@ -1,0 +1,19 @@
+-------------------------------------------------------------------------------
+Test set: TestSuite
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 11.411 s <<< FAILURE! - in TestSuite
+com.demo.testcase.launch  Time elapsed: 10.962 s  <<< FAILURE!
+org.openqa.selenium.SessionNotCreatedException: 
+Could not start a new session. Possible causes are invalid address of the remote server or browser start-up failure. 
+Host info: host: 'DESKTOP-C4MOHRM', ip: '169.254.48.77'
+Build info: version: '4.12.1', revision: '8e34639b11'
+System info: os.name: 'Windows 10', os.arch: 'amd64', os.version: '10.0', java.version: '17.0.11'
+Driver info: org.openqa.selenium.remote.RemoteWebDriver
+Command: [null, newSession {capabilities=[Capabilities {browserName: chrome, goog:chromeOptions: {args: [--remote-allow-origins=*, --headless, --no-sandbox, --disable-dev-shm-usage], extensions: []}}]}]
+Capabilities {browserName: chrome, goog:chromeOptions: {args: [--remote-allow-origins=*, --headless, --no-sandbox, --disable-dev-shm-usage], extensions: []}}
+	at com.demo.testcase.launch(testcase.java:30)
+Caused by: java.io.UncheckedIOException: java.net.ConnectException: connection timed out: /74.225.21.195:4444
+	at com.demo.testcase.launch(testcase.java:30)
+Caused by: java.net.ConnectException: connection timed out: /74.225.21.195:4444
+Caused by: io.netty.channel.ConnectTimeoutException: connection timed out: /74.225.21.195:4444
+
